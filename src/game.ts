@@ -2,6 +2,8 @@
 import { GameState, Move, PlayerInterface, PlayerType, Tile } from "azul-tiles";
 import { State } from "azul-tiles/dist/state.js";
 import { GuiDisplay } from "./display";
+import { BagView } from "./bag-view";
+import { FactoryDropHandler } from "./factory-drop-handler";
 
 export class Human implements PlayerInterface {
     type = PlayerType.HUMAN;
@@ -21,18 +23,32 @@ export class GuiGame {
     selected_factory: number = -1;
     possible_lines: Array<number> = [];
 
+    // Manual distribution state
+    private manualDistributionMode: boolean = false;
+    private bagView: BagView | null = null;
+    private factoryDropHandler: FactoryDropHandler | null = null;
+
+    // Our own tile bag - we manage this ourselves, ignoring library's bag manipulation
+    private ourBag: Array<number> = [];
+
+    // Discarded tiles - tiles from floor/incomplete lines that don't return to bag until it's depleted
+    private discardedTiles: Array<number> = [];
+
     // Creates a new game with given setup details
     constructor(public players: Array<PlayerInterface>) {
         // Create gamestate
         this.gamestate = new GameState();
 
-        // Start game
+        // Start game (this does random distribution internally)
         this.gamestate.newGame(this.players.length);
 
         // Update the display
         this.display = new GuiDisplay(this.gamestate, this.players);
 
         this.assign_callbacks();
+
+        // Enter manual distribution phase instead of starting with random tiles
+        this.enterManualDistributionPhase();
     }
 
     // Replay the game with same seed
@@ -44,12 +60,16 @@ export class GuiGame {
         this.gamestate.seed = seed;
         // Start game
         this.gamestate.newGame(this.players.length);
+        // Reset our bag and discarded tiles for new game
+        this.ourBag = [];
+        this.discardedTiles = [];
         // Reset display
         // this.display.clear()
         // Update the display
         this.display.update_for_end_of_round(this.gamestate);
-        // Add callbacks to factory tiles
-        this.assign_factory_callbacks();
+
+        // Enter manual distribution phase
+        this.enterManualDistributionPhase();
 
         // @ts-ignore
         plausible("Tiles Game", { props: { type: "Replay" } });
@@ -62,10 +82,14 @@ export class GuiGame {
         this.gamestate = new GameState();
         // Start game
         this.gamestate.newGame(this.players.length);
+        // Reset our bag and discarded tiles for new game
+        this.ourBag = [];
+        this.discardedTiles = [];
         // Update display for start of game
         this.display.update_for_end_of_round(this.gamestate);
-        // Add callbacks to factory tiles
-        this.assign_factory_callbacks();
+
+        // Enter manual distribution phase
+        this.enterManualDistributionPhase();
 
         // @ts-ignore
         plausible("Tiles Game", { props: { type: "Rematch" } });
@@ -214,6 +238,11 @@ export class GuiGame {
     }
 
     screen_click_callback(event: Event): void {
+        // Skip normal handling when in distribution mode
+        if (this.manualDistributionMode) {
+            return;
+        }
+
         // Perform different action depending on game state
         switch (this.gamestate.state) {
             case State.turn:
@@ -235,7 +264,9 @@ export class GuiGame {
                 break;
             case State.endOfTurns:
                 // Either new round with player turn or end of game after this
-                if (!this.gamestate.endRound()) {
+                const continueGame = this.gamestate.endRound();
+
+                if (!continueGame) {
                     //  Game has finished
                     const player0 = this.players[0];
                     const player1 = this.players[1];
@@ -296,9 +327,13 @@ export class GuiGame {
                             },
                         });
                     }
+                    // Show end of game display
+                    this.display.update_for_end_of_round(this.gamestate);
+                } else {
+                    // New round - enter manual distribution phase
+                    this.display.update_for_end_of_round(this.gamestate);
+                    this.enterManualDistributionPhase();
                 }
-                this.display.update_for_end_of_round(this.gamestate);
-                this.assign_factory_callbacks();
                 break;
         }
     }
@@ -316,5 +351,139 @@ export class GuiGame {
         } else {
             Error("${moves.length} moves match");
         }
+    }
+
+    // ============================================
+    // Manual Tile Distribution Methods
+    // ============================================
+
+    // Enter the manual distribution phase
+    private enterManualDistributionPhase(): void {
+        console.log("Entering manual distribution phase");
+
+        // Calculate how many tiles are needed per round
+        const numFactories = this.gamestate.factory.length - 1; // Exclude centre
+        const tilesPerRound = numFactories * 4; // 20 for 2-player game
+
+        // Initialize our bag on first distribution (round 1)
+        if (this.ourBag.length === 0) {
+            // First round - restore tiles from factories and save as our bag
+            this.restoreTilesToBag();
+            this.ourBag = [...this.gamestate.tilebag];
+            console.log(`Initialized our bag with ${this.ourBag.length} tiles`);
+        }
+
+        // If our bag is depleted, refill from discarded tiles
+        if (this.ourBag.length < tilesPerRound && this.discardedTiles.length > 0) {
+            console.log(`Bag depleted (${this.ourBag.length} tiles). Refilling from ${this.discardedTiles.length} discarded tiles.`);
+            this.ourBag.push(...this.discardedTiles);
+            this.discardedTiles = [];
+        }
+
+        console.log(`Bag has ${this.ourBag.length} tiles, need ${tilesPerRound}`);
+
+        // 4. Create empty factories for distribution
+        this.display.create_empty_factories(numFactories);
+
+        // 4. Add distribution-mode class to game element
+        document.getElementById("game")?.classList.add("distribution-mode");
+
+        // 5. Create BagView - use OUR bag, not the library's
+        const factoriesContainer = document.getElementById("factories") as HTMLElement;
+        this.bagView = new BagView(factoriesContainer);
+        this.bagView.create(this.ourBag, tilesPerRound);
+
+        // 6. Setup FactoryDropHandler
+        this.factoryDropHandler = new FactoryDropHandler();
+        const regularFactories = this.display.getRegularFactories();
+        this.factoryDropHandler.setupDropZones(regularFactories);
+
+        // 7. Wire up callbacks
+        this.factoryDropHandler.setOnTileDropped((factoryId, color) => {
+            this.bagView?.tilePlaced(color);
+        });
+
+        this.factoryDropHandler.setOnTileRemoved((factoryId, color) => {
+            this.bagView?.tileReturned(color);
+        });
+
+        this.bagView.setOnDistributionComplete(() => {
+            this.applyManualDistribution();
+        });
+
+        // 8. Set mode flag
+        this.manualDistributionMode = true;
+    }
+
+    // Restore tiles from factories back to the bag (used only on first round)
+    private restoreTilesToBag(): void {
+        // Iterate through factories 1 to n (skip centre at index 0)
+        for (let i = 1; i < this.gamestate.factory.length; i++) {
+            const factory = this.gamestate.factory[i];
+            // Add each tile back to the bag
+            factory.forEach(tile => {
+                if (tile !== Tile.Null && tile >= 0) {
+                    this.gamestate.tilebag.push(tile);
+                }
+            });
+            // Clear the factory
+            this.gamestate.factory[i] = [];
+        }
+    }
+
+    // Apply the manual distribution and start the round
+    private applyManualDistribution(): void {
+        console.log("Applying manual distribution");
+
+        if (!this.factoryDropHandler) return;
+
+        // 1. Get the factory configuration from the drop handler
+        const factoryConfig = this.factoryDropHandler.getFactoryConfiguration();
+
+        // 2. Apply configuration to gamestate factories
+        factoryConfig.forEach((tiles, index) => {
+            this.gamestate.factory[index + 1] = tiles; // +1 to skip centre
+        });
+
+        // 3. Remove placed tiles from OUR bag
+        factoryConfig.forEach(factory => {
+            factory.forEach(tileColor => {
+                const index = this.ourBag.indexOf(tileColor);
+                if (index !== -1) {
+                    this.ourBag.splice(index, 1);
+                }
+            });
+        });
+
+        // 4. Sync our bag to the library's tilebag
+        this.gamestate.tilebag.length = 0;
+        this.gamestate.tilebag.push(...this.ourBag);
+
+        // 4. Regenerate available moves with the new factory state
+        // Access the internal getMoves method via type assertion
+        (this.gamestate as any).getMoves();
+
+        // 5. Cleanup distribution UI
+        this.bagView?.destroy();
+        this.bagView = null;
+        this.factoryDropHandler?.destroy();
+        this.factoryDropHandler = null;
+
+        // 6. Remove distribution-mode class
+        document.getElementById("game")?.classList.remove("distribution-mode");
+
+        // 7. Recreate factories with the actual tiles
+        this.display.create_factories(this.gamestate);
+
+        // 8. Add callbacks to factory tiles
+        this.assign_factory_callbacks();
+
+        // 9. Exit distribution mode
+        this.manualDistributionMode = false;
+
+        // 10. Highlight active player
+        this.display.highlight_board(this.gamestate.activePlayer);
+
+        console.log("Manual distribution complete. Starting round.");
     }
 }

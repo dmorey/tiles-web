@@ -257,6 +257,34 @@ export class GuiDisplay {
         });
     }
 
+    // Create empty factories for manual distribution phase
+    create_empty_factories(numFactories: number): void {
+        const factories_elem = document.getElementById("factories") as HTMLElement;
+        factories_elem.innerHTML = "";
+        this.factories = [];
+
+        // Create centre factory (factory 0) - hidden during distribution
+        const centre = create_factory(0);
+        factories_elem.append(centre);
+        this.factories.push(centre);
+
+        // Create empty factories for distribution (1 to numFactories)
+        for (let i = 1; i <= numFactories; i++) {
+            const factory_elem = create_factory(i);
+            // Clear tile colors to show empty state
+            [...factory_elem.children].forEach(tile => {
+                (tile as HTMLElement).removeAttribute("tile-colour");
+            });
+            factories_elem.append(factory_elem);
+            this.factories.push(factory_elem);
+        }
+    }
+
+    // Get factory elements excluding centre (for drop zone setup)
+    getRegularFactories(): Array<HTMLElement> {
+        return this.factories.slice(1);
+    }
+
     body_resize(): void {
         const height = window.innerHeight.toString() + "px";
         document.getElementById("game")!.style.minHeight = height;
