@@ -6,10 +6,8 @@ import "./gui.css";
 // Import PlayerBoard to override floor scores
 import { PlayerBoard } from "azul-tiles";
 
-// Fix 7th tile penalty: change from -3 to -4
-// Original: [-1, -1, -2, -2, -2, -3, -3]
-// Corrected: [-1, -1, -2, -2, -2, -3, -4]
-PlayerBoard.floorScores = [-1, -1, -2, -2, -2, -3, -4];
+// Floor scores (using library default: 7th tile is -3)
+PlayerBoard.floorScores = [-1, -1, -2, -2, -2, -3, -3];
 
 // For managing the startup page
 import { add_player, get_options, get_players, validate_players } from "./setup";
