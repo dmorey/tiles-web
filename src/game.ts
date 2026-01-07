@@ -483,7 +483,5 @@ export class GuiGame {
 
         // 10. Highlight active player
         this.display.highlight_board(this.gamestate.activePlayer);
-
-        console.log("Manual distribution complete. Starting round.");
     }
 }
