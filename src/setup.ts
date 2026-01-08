@@ -44,11 +44,18 @@ export function add_player(type: string): void {
 
 export function get_options() {}
 
-export function get_players(): Array<PlayerInterface> {
+export function get_players(swapOrder: boolean = false): Array<PlayerInterface> {
     // array to hold players for game creation
     const players: Array<PlayerInterface> = [];
     const players_elem = document.getElementById("players") as HTMLElement;
-    [...players_elem.children].forEach((player, id) => {
+    const playerElements = [...players_elem.children];
+
+    // If swapping order, reverse the elements so player 2 becomes id 0
+    if (swapOrder && playerElements.length >= 2) {
+        playerElements.reverse();
+    }
+
+    playerElements.forEach((player, id) => {
         const player_data = new FormData(player as HTMLFormElement);
         switch (player_data.get("player-type")) {
             case "human":

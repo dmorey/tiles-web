@@ -127,10 +127,28 @@ h2 {
 /* Position player, type and Add player on own row */
 .player-header,
 .player-type-header,
-#add-player-string {
+#add-player-string,
+#first-player-select > div:first-child {
     width: 100%;
     margin: auto;
     text-align: center;
+}
+
+/* First player selection styling */
+#first-player-select {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: baseline;
+    padding-top: 10px;
+    padding-bottom: 5px;
+    border-top: 1px solid #ccc;
+    margin-top: 10px;
+}
+
+#first-player-select > div {
+    padding-left: 10px;
+    padding-right: 10px;
 }
 /* Show player with header on top, and other items centred below */
 .player,

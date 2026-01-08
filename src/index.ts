@@ -44,8 +44,12 @@ document.getElementById("start-button")?.addEventListener("click", (event) => {
     console.log("Start Button");
     event.stopPropagation();
 
-    // Get setup info
-    const players = get_players();
+    // Check first player selection
+    const firstPlayerSelect = document.getElementById("first-player") as HTMLSelectElement;
+    const player2First = firstPlayerSelect && firstPlayerSelect.value === "2";
+
+    // Get setup info - pass swap flag to create players with correct IDs from the start
+    let players = get_players(player2First);
     const options = get_options();
 
     // Validate setup info
